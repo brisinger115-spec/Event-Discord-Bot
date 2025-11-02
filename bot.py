@@ -6,7 +6,7 @@ import os
 from flask import Flask
 from threading import Thread
 
-# ========== KEEP-ALIVE FLASK SERVER ==========
+# ================= KEEP-ALIVE FLASK SERVER =================
 app = Flask('')
 
 @app.route('/')
@@ -20,43 +20,37 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# ========== DISCORD BOT SETUP ==========
+# ================= DISCORD BOT SETUP =================
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ========== DATABASE SETUP ==========
+# ================= DATABASE SETUP =================
 conn = sqlite3.connect('events.db')
 c = conn.cursor()
-
 c.execute('''CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
     date TEXT,
     description TEXT
 )''')
-
 c.execute('''CREATE TABLE IF NOT EXISTS rsvps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_name TEXT,
     user_id INTEGER
 )''')
-
 conn.commit()
 conn.close()
 
-# ========== COMMANDS ==========
-
+# ================= COMMANDS =================
 @bot.event
 async def on_ready():
     print(f'✅ Logged in as {bot.user}')
     weekly_reminder.start()
     cleanup_past_events.start()
 
-# Add Event
 @bot.command(name="add_event")
 async def add_event(ctx, name: str, date: str, *, description: str):
-    """Add a new event. Format: !add_event "EventName" YYYY-MM-DD Description"""
     try:
         datetime.strptime(date, "%Y-%m-%d")
         conn = sqlite3.connect('events.db')
@@ -68,10 +62,8 @@ async def add_event(ctx, name: str, date: str, *, description: str):
     except ValueError:
         await ctx.send("❌ Please use the correct date format: YYYY-MM-DD")
 
-# View All Events or Filter by Month
 @bot.command(name="view_events")
 async def view_events(ctx, month: str = None):
-    """View all events or only events in a specific month. Format: !view_events [MonthName]"""
     conn = sqlite3.connect('events.db')
     c = conn.cursor()
     c.execute("SELECT name, date, description FROM events")
@@ -99,10 +91,8 @@ async def view_events(ctx, month: str = None):
         message += f"• **{name}** on {date} — {desc}\n"
     await ctx.send(message)
 
-# RSVP for Event
 @bot.command(name="rsvp")
 async def rsvp(ctx, *, event_name: str):
-    """RSVP for an event by name. Format: !rsvp EventName"""
     conn = sqlite3.connect('events.db')
     c = conn.cursor()
     c.execute("SELECT name FROM events WHERE name = ?", (event_name,))
@@ -122,38 +112,30 @@ async def rsvp(ctx, *, event_name: str):
         await ctx.send(f"✅ {ctx.author.display_name} RSVP’d for **{event_name}**!")
     conn.close()
 
-# Check RSVP Count
 @bot.command(name="rsvp_count")
 async def rsvp_count(ctx, *, event_name: str):
-    """Check how many people RSVP'd for an event."""
     conn = sqlite3.connect('events.db')
     c = conn.cursor()
     c.execute("SELECT COUNT(*) FROM rsvps WHERE event_name = ?", (event_name,))
     count = c.fetchone()[0]
     conn.close()
-
     await ctx.send(f"📋 **{count}** people have RSVP’d for **{event_name}**.")
 
-# Delete Event
 @bot.command(name="delete_event")
 async def delete_event(ctx, *, event_name: str):
-    """Delete an event by name. Format: !delete_event EventName"""
     conn = sqlite3.connect('events.db')
     c = conn.cursor()
     c.execute("DELETE FROM events WHERE name = ?", (event_name,))
     deleted = c.rowcount
     conn.commit()
     conn.close()
-
     if deleted:
         await ctx.send(f"🗑️ Event **{event_name}** deleted.")
     else:
         await ctx.send("❌ Event not found.")
 
-# Commands List
 @bot.command(name="commands")
 async def commands_list(ctx):
-    """List all bot commands."""
     cmds = (
         "**🧾 Event Commands List:**\n"
         "`!add_event \"Name\" YYYY-MM-DD Description` — Add new event\n"
@@ -165,10 +147,8 @@ async def commands_list(ctx):
     )
     await ctx.send(cmds)
 
-# ========== AUTOMATION TASKS ==========
-
-# Weekly reminder for events in next 14 days
-@tasks.loop(hours=168)  # every 7 days
+# ================= AUTOMATION TASKS =================
+@tasks.loop(hours=168)
 async def weekly_reminder():
     channel_id = 956364618035527710  # replace with your channel ID
     channel = bot.get_channel(channel_id)
@@ -178,18 +158,13 @@ async def weekly_reminder():
 
     today = datetime.now().date()
     reminder_range = today + timedelta(days=14)
-
     conn = sqlite3.connect('events.db')
     c = conn.cursor()
     c.execute("SELECT name, date, description FROM events")
     events = c.fetchall()
     conn.close()
 
-    upcoming = []
-    for name, date, desc in events:
-        event_date = datetime.strptime(date, "%Y-%m-%d").date()
-        if today <= event_date <= reminder_range:
-            upcoming.append((name, date, desc))
+    upcoming = [(n, d, desc) for n, d, desc in events if today <= datetime.strptime(d, "%Y-%m-%d").date() <= reminder_range]
 
     if upcoming:
         message = "**⏰ Upcoming Events in the Next 14 Days:**\n"
@@ -199,7 +174,6 @@ async def weekly_reminder():
     else:
         await channel.send("📭 No events in the next 14 days!")
 
-# Clean up old events (10 days after they pass)
 @tasks.loop(hours=24)
 async def cleanup_past_events():
     conn = sqlite3.connect('events.db')
@@ -209,6 +183,6 @@ async def cleanup_past_events():
     conn.commit()
     conn.close()
 
-# ========== RUN EVERYTHING ==========
+# ================= RUN BOT =================
 keep_alive()
-bot.run(os.getenv("DISCORD_BOT_TOKEN"))
+bot.run(os.getenv("DISCORD_TOKEN"))
